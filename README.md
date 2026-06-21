@@ -27,8 +27,14 @@ Hugo 静态博客的构建时加密工具。
 ### 远程
 
 ```bash
+# 远程安装的方式貌似有问题
 npm install --save-dev github:aoidayo/hugo-blog-encrypt # 项目中安装
 npm install -g github:aoidayo/hugo-blog-encrypt # 全局安装
+
+# 推荐pull后在本地install
+git pull git@github.com:Aoidayo/hugo-blog-encrypt.git
+cd hugo-blog-encrypt
+npm install -g .
 ```
 
 
