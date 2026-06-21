@@ -1,0 +1,3 @@
+{{- if (.Params.password | default "") -}}
+<template data-hugo-encrypt-start>{{ dict "password" .Params.password "prompt" (.Params.prompt | default "请输入密码") | jsonify }}</template>
+{{- end -}}

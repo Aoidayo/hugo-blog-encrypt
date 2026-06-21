@@ -1,0 +1,12 @@
+{{- $password := .Get "password" | default (.Get 0) -}}
+{{- $prompt := .Get "prompt" | default "请输入密码" -}}
+{{- if not $password -}}
+  {{- errorf "encrypt shortcode in %q requires a password parameter" .Page.File.Path -}}
+{{- end -}}
+{{- if (.Page.Params.password | default "") -}}
+{{ .Page.RenderString .Inner }}
+{{- else -}}
+<template data-hugo-encrypt-start>{{ dict "password" $password "prompt" $prompt | jsonify }}</template>
+{{ .Page.RenderString .Inner }}
+<template data-hugo-encrypt-end></template>
+{{- end -}}

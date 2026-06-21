@@ -1,0 +1,27 @@
+{
+  "name": "hugo-blog-encrypt",
+  "version": "0.1.0",
+  "description": "Build-time AES-GCM encryption for Hugo articles and partial content.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "hugo-blog-encrypt": "./bin/hugo-blog-encrypt.js"
+  },
+  "scripts": {
+    "encrypt": "node ./bin/hugo-blog-encrypt.js",
+    "build": "node ./bin/hugo-blog-encrypt.js build",
+    "preview": "node ./bin/hugo-blog-encrypt.js preview",
+    "test": "node ./test/smoke.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "layouts/",
+    "scripts/",
+    "static/",
+    "README.md",
+    "go.mod"
+  ]
+}
