@@ -62,12 +62,18 @@ npm install -g /Users/aoi/code/hugo-blog-encrypt # 全局安装
 node_modules/
 ```
 
-> [!tip]+ Tip：第2、3步
+> [!tip]
+> 第2、3步：自动配置
+> 
 > 第二步和第三步 可以在根目录下调用`hugo-blog-encrypt install`完成。
+>
 > 项目内安装的，可以使用`npx hugo-blog-encrypt install`。
 
-> [!tip]- Tip：第2、3步，手动添加layouts
+> [!tip]
+> 第2、3步：手动添加layouts
+> 
 > 2、添加局部加密的shortcode
+>
 > 创建`blog-root/layouts/shortcodes/encrypt.html`，写入
 > ```html
 > {{- $password := .Get "password" | default (.Get 0) -}}
@@ -86,6 +92,7 @@ node_modules/
 > ```
 > 
 > 3、添加全局加密的partials，覆盖原`{{.Content}}`
+> 
 > 在`blog-root/layouts/partials`添加整篇文章加密的定位partials
 > ```bash
 > - blog-root
@@ -108,7 +115,9 @@ node_modules/
 
 4、复制主题对应的contents出来，放在根目录的layouts下面
 
-> [!warning] 注意
+> [!warning]
+> 注意
+> 
 > 不同主题的`{{.Content}}`的位置不一样，可以直接`Ctrl/Command + shift + F`全局搜索后然后copy到根目录进行覆盖。
 
 - 比如`stack`主题中`{{.Content}}`在`layout/partials/article/components/content.html` 中，复制到根目录同文件夹
