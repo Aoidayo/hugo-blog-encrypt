@@ -2,123 +2,178 @@
 
 [中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
 
+[Example Site](https://blog.aoidayo.site/hugo-encrypt-showcase/)
+
 A build-time encryption tool for Hugo static blogs.
 
-It lets Hugo render Markdown to HTML first, then scans the generated `public` directory and replaces marked HTML fragments with AES-256-GCM ciphertext. When a visitor opens the page, they enter a password in the browser, and the frontend script decrypts the content with Web Crypto.
+How it works: Hugo first renders Markdown into HTML normally. Then `hugo-blog-encrypt` scans the `public` directory and replaces marked HTML fragments with AES-256-GCM ciphertext. After opening the page normally, the user enters the password in the browser, and the frontend script uses Web Crypto to decrypt and restore the content.
 
-## Features
+Features
 
-- **Partial encryption**: Protect only part of an article.
-- **Full article encryption**: Protect the full article body.
-- **Preview mode**: Build Hugo, encrypt output, and serve a local static preview with one command.
-- **Session password cache**: Content unlocked in the same browser session is automatically retried after refresh.
-- **Search index protection**: Scrubs `content`, `summary`, and `description` from protected entries in `public/index.json`.
+* **Partial encryption**: Encrypt a specific part of an article, requiring a password to view it.
+* **Full article encryption**: Encrypt the entire article body, requiring a password to view it.
+* **Preview mode**: Build Hugo, encrypt the output, and start a local static preview with a single command.
+* **Password session cache**: Within the same browser session via SessionStorage, previously unlocked content will automatically attempt to decrypt after refresh.
+
+
+
+## Known Issues
+
+* **Table of contents rebuilding**: The table of contents is not re-rendered after full or partial encryption. The TOC is generated normally by the theme, and this plugin does not perform theme-specific adaptation.
+* **Search index protection**: The `content`, `summary`, and `description` fields of protected articles in `public/index.json` are automatically cleared. Other search index files require additional theme-specific adaptation.
+* **RSS leakage prevention**: RSS template adaptation is required to prevent `.Summary` from outputting encrypted content into feeds.
+
+# Quick Start
 
 ## Requirements
 
-- Hugo version compatible with your theme
-- Node.js 18+
+* Hugo version: must match the Hugo version required by your theme.
+* Node.js 18+
 
-## Installation
+## Installing Dependencies
 
-### Install from GitHub
-
-```bash
-npm install --save-dev github:Aoidayo/hugo-blog-encrypt
-npm install -g github:Aoidayo/hugo-blog-encrypt
-```
-
-If the global command is not found after installation, check whether npm's global bin directory is in your `PATH`:
+### Remote
 
 ```bash
-npm config get prefix
-ls "$(npm config get prefix)/bin" | grep hugo-blog-encrypt
-```
+# Remote installation seems to have some issues
+npm install --save-dev github:aoidayo/hugo-blog-encrypt # Install inside the project
+npm install -g github:aoidayo/hugo-blog-encrypt # Global installation
 
-### Install from a local checkout
-
-```bash
-git clone git@github.com:Aoidayo/hugo-blog-encrypt.git
+# Recommended: pull the repository and install locally
+git pull git@github.com:Aoidayo/hugo-blog-encrypt.git
 cd hugo-blog-encrypt
 npm install -g .
 ```
 
-Inside a Hugo project:
+### Local
+
+Under `blog-root`:
 
 ```bash
-npm install --save-dev /path/to/hugo-blog-encrypt
-npm install -g /path/to/hugo-blog-encrypt
+# Install dependency locally
+npm install --save-dev /Users/xxx/code/hugo-blog-encrypt # Install inside the project
+'''
+Result:
+node_modules/
+package.json
+package-lock.json
+'''
+
+npm install -g /Users/aoi/code/hugo-blog-encrypt # Global installation
 ```
 
-## Prepare Layouts
+## Preparing layouts
 
-Partial encryption needs a shortcode. Full article encryption needs you to wrap the theme's `.Content` output because different themes place `.Content` in different templates.
+Required changes:
 
-Add this when installing locally in a project:
+* Add `gitignore`. Installing dependencies with npm will add `node_modules`. If you install globally with `-g`, this step can be ignored.
+* Partial encryption requires adding a shortcode.
+* Full article encryption requires wrapping `Content` once in `layouts`. The plugin cannot automatically intercept the output location of `.Content` across different themes.
+* If your theme outputs `.Summary`, `.Plain`, or `.Content` to search or RSS, additional adaptation is required to prevent leakage.
 
-```gitignore
+1. Add the following to `gitignore` to ignore locally installed dependencies. If you use `npm install -g` for global installation, this is not required:
+
+```text
 node_modules/
 ```
 
-### Partial Encryption Shortcode
+> [!tip]
+> Steps 2 and 3: Automatic configuration
+>
+> Steps 2 and 3 can be completed by running `hugo-blog-encrypt install` in the root directory.
+>
+> If installed inside the project, use `npx hugo-blog-encrypt install`.
 
-Create `layouts/shortcodes/encrypt.html` in your Hugo project:
+> [!tip]
+> Steps 2 and 3: Manually add layouts
+>
+> 2. Add the shortcode for partial encryption.
+>
+> Create `blog-root/layouts/shortcodes/encrypt.html` and write:
+>
+> ```html
+> {{- $password := .Get "password" | default (.Get 0) -}}
+> {{- $prompt := .Get "prompt" | default "Please enter the password" -}}
+> {{- if not $password -}}
+>   {{- errorf "encrypt shortcode in %q requires a password parameter" .Page.File.Path -}}
+> {{- end -}}
+> {{- if (.Page.Params.password | default "") -}}
+> {{ .Page.RenderString .Inner }}
+> {{- else -}}
+> <template data-hugo-encrypt-start>{{ dict "password" $password "prompt" $prompt | jsonify }}</template>
+> {{ .Page.RenderString .Inner }}
+> <template data-hugo-encrypt-end></template>
+> {{- end -}}
+>
+> ```
+>
+> 3. Add partials for full article encryption to wrap the original `{{.Content}}`.
+>
+> Add the positioning partials for full article encryption under `blog-root/layouts/partials`:
+>
+> ```bash
+> - blog-root
+>     - layouts
+>         - partials
+>             - hugo-blog-encrypt
+>                 - content-start.html
+>                 - content-end.html
+>
+> # content-start.html
+> {{- if (.Params.password | default "") -}}
+> <template data-hugo-encrypt-start>{{ dict "password" .Params.password "prompt" (.Params.prompt | default "Please enter the password") | jsonify }}</template>
+> {{- end -}}
+>
+> # content-end.html
+> {{- if (.Params.password | default "") -}}
+> <template data-hugo-encrypt-end></template>
+> {{- end -}}
+> ```
+
+4. Copy the corresponding content template from your theme and place it under the root `layouts` directory.
+
+> [!warning]
+> Note
+>
+> The position of `{{.Content}}` differs by theme. You can search globally with `Ctrl/Command + Shift + F`, then copy the corresponding file to the root directory to override it.
+
+For example, in the `stack` theme, `{{.Content}}` is located at `layout/partials/article/components/content.html`. Copy it to the same path under the root directory:
 
 ```html
-{{- $password := .Get "password" | default (.Get 0) -}}
-{{- $prompt := .Get "prompt" | default "请输入密码" -}}
-{{- if not $password -}}
-  {{- errorf "encrypt shortcode in %q requires a password parameter" .Page.File.Path -}}
-{{- end -}}
-{{- if (.Page.Params.password | default "") -}}
-{{ .Page.RenderString .Inner }}
-{{- else -}}
-<template data-hugo-encrypt-start>{{ dict "password" $password "prompt" $prompt | jsonify }}</template>
-{{ .Page.RenderString .Inner }}
-<template data-hugo-encrypt-end></template>
-{{- end -}}
+<section class="article-content">
+    <!-- Refer to https://discourse.gohugo.io/t/responsive-tables-in-markdown/10639/5 -->
+    {{ $wrappedTable := printf "<div class=\"table-wrapper\">${1}</div>" }}
+    {{ .Content | replaceRE "(<table>(?:.|\n)+?</table>)" $wrappedTable | safeHTML }}
+</section>
 ```
 
-### Full Article Partials
-
-Create:
-
-```text
-layouts/partials/hugo-blog-encrypt/content-start.html
-layouts/partials/hugo-blog-encrypt/content-end.html
-```
-
-`content-start.html`:
+Add the `content-start` and `content-end` positioning tags:
 
 ```html
-{{- if (.Params.password | default "") -}}
-<template data-hugo-encrypt-start>{{ dict "password" .Params.password "prompt" (.Params.prompt | default "请输入密码") | jsonify }}</template>
-{{- end -}}
+<section class="article-content">
+    <!-- Refer to https://discourse.gohugo.io/t/responsive-tables-in-markdown/10639/5 -->
+    {{ $wrappedTable := printf "<div class=\"table-wrapper\">${1}</div>" }}
+    {{ partial "hugo-blog-encrypt/content-start.html" . }}
+    {{ .Content | replaceRE "(<table>(?:.|\n)+?</table>)" $wrappedTable | safeHTML }}
+    {{ partial "hugo-blog-encrypt/content-end.html" . }}
+</section>
 ```
 
-`content-end.html`:
-
-```html
-{{- if (.Params.password | default "") -}}
-<template data-hugo-encrypt-end></template>
-{{- end -}}
-```
-
-Then copy the theme template that renders `.Content` into your project `layouts` directory and wrap `.Content`:
+The diff is as follows:
 
 ```diff
- <section class="article-content">
-+  {{ partial "hugo-blog-encrypt/content-start.html" . }}
-   {{ .Content }}
-+  {{ partial "hugo-blog-encrypt/content-end.html" . }}
- </section>
+<section class="article-content">
+    <!-- Refer to https://discourse.gohugo.io/t/responsive-tables-in-markdown/10639/5 -->
+    {{ $wrappedTable := printf "<div class=\"table-wrapper\">${1}</div>" }}
++   {{ partial "hugo-blog-encrypt/content-start.html" . }}
+    {{ .Content | replaceRE "(<table>(?:.|\n)+?</table>)" $wrappedTable | safeHTML }}
++   {{ partial "hugo-blog-encrypt/content-end.html" . }}
+</section>
 ```
 
-For the Stack theme, `.Content` is usually in `layouts/partials/article/components/content.html`.
+## Example Documents
 
-## Examples
-
-### Full Article Encryption
+Full article encryption:
 
 ```markdown
 ---
@@ -128,28 +183,32 @@ draft: false
 tags:
   - hugo
   - stack
-password: "123"
-prompt: "Password required"
+password: "123" # Must be a string, not a number
+prompt: "So what?" # Default: "Please enter the password"
 ---
-
-This content is encrypted after Hugo builds the page.
+This site is running the Stack theme version compatible with Hugo 0.143.1.
 ```
 
-### Partial Encryption
+Partial encryption:
 
 ```markdown
 ---
 title: "Partial Encryption"
 date: 2026-06-21T09:00:00+08:00
 draft: false
+tags:
+  - hugo
+  - stack
 ---
 
-This part is public.
+This is partial encryption. 👇 The following content is encrypted.
 
-{{< encrypt password="your-password" prompt="Password required" >}}
-This part is encrypted.
+{{< encrypt password="your password" prompt="Password required here" >}}
+This is content that requires encryption.
 
-## Heading
+Normal Markdown is supported:
+
+## Subheading
 
 - List
 - Image
@@ -159,36 +218,35 @@ This part is encrypted.
 
 ## Usage
 
-Project-local install:
+### When installed inside the project
+
+* You cannot directly call `hugo-blog-encrypt`.
+* You can use `npx hugo-blog-encrypt preview` to preview after encryption, and `npx hugo-blog-encrypt build` to build and encrypt `public/`.
+
+  * `npx hugo-blog-encrypt --help`
+  * `npx hugo-blog-encrypt preview/build`
+* You can also modify the local `package.json`, then run `npm run dev/build/preview`.
 
 ```bash
-npx hugo-blog-encrypt --help
-npx hugo-blog-encrypt preview
-npx hugo-blog-encrypt build
-```
-
-Global install:
-
-```bash
-hugo-blog-encrypt preview
-hugo-blog-encrypt preview --port 1314
-hugo-blog-encrypt build
-```
-
-You can also add scripts to your Hugo project's `package.json`:
-
-```json
-{
-  "scripts": {
-    "dev": "hugo server",
-    "build": "hugo-blog-encrypt build",
-    "preview": "hugo-blog-encrypt preview"
-  }
+## Add to package.json
+'''
+"scripts": {
+  "dev": "hugo server",
+  "build": "hugo-blog-encrypt build",
+  "preview": "hugo-blog-encrypt preview"
 }
+'''
+
+# Run
+npm run dev # Start Hugo normally. By default, hugo server supports hot reload.
+npm run build # Generate Hugo public output and call hugo-blog-encrypt to encrypt the specified tags.
+npm run preview # Generate Hugo output, encrypt it, and preview it. Hot reload is not supported; rerun this command after modifying documents.
 ```
 
-## Notes
+### When installed globally
 
-- The plugin does not modify or rebuild a theme's table of contents. Your theme's TOC behavior stays unchanged.
-- If your theme outputs `.Summary`, `.Plain`, or `.Content` into RSS or search files, add theme-specific protection to avoid leaks.
-- Passwords should be strings in front matter, for example `password: "123"`, not `password: 123`.
+* Call directly:
+
+  * `hugo-blog-encrypt preview`
+  * `hugo-blog-encrypt preview --port 1314`
+  * `hugo-blog-encrypt build`

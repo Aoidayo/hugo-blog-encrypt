@@ -2,123 +2,176 @@
 
 [中文](README.md) | [English](README.en.md) | [日本語](README.ja.md)
 
+[デモサイト](https://blog.aoidayo.site/hugo-encrypt-showcase/)
+
 Hugo 静的ブログ向けのビルド時暗号化ツールです。
 
-Hugo が Markdown を通常どおり HTML に変換したあと、`hugo-blog-encrypt` が生成済みの `public` ディレクトリを走査し、マークされた HTML 断片を AES-256-GCM の暗号文に置き換えます。ページを開いたユーザーはブラウザ上でパスワードを入力し、フロントエンドのスクリプトが Web Crypto で内容を復号します。
+仕組み：まず Hugo に通常どおり Markdown を HTML にレンダリングさせ、その後 `hugo-blog-encrypt` が `public` ディレクトリをスキャンし、マークされた HTML 断片を AES-256-GCM の暗号文に置き換えます。ページを通常どおり開いた後、ブラウザ上でパスワードを入力すると、フロントエンドスクリプトが Web Crypto を使って復号し、内容を復元します。
 
-## 機能
+機能
 
-- **部分暗号化**: 記事内の一部だけをパスワードで保護します。
-- **記事全体の暗号化**: 記事本文全体をパスワードで保護します。
-- **preview モード**: Hugo のビルド、暗号化、ローカル静的プレビューを 1 コマンドで実行します。
-- **セッション内パスワードキャッシュ**: 同じブラウザセッションでは、解錠済みの内容をリロード後に自動で復号しようとします。
-- **検索インデックス保護**: `public/index.json` 内の保護対象記事から `content`、`summary`、`description` を削除します。
+* **部分暗号化**：記事内の一部コンテンツを、パスワード入力後に閲覧できるようにします。
+* **記事全体の暗号化**：記事本文全体を、パスワード入力後に閲覧できるようにします。
+* **preview モード**：1 つのコマンドで Hugo のビルド、暗号化、ローカル静的プレビューの起動まで行います。
+* **パスワードのセッションキャッシュ**：同一ブラウザセッション（SessionStorage）内では、一度解除したコンテンツはリロード時に自動で復号を試みます。
 
-## 必要環境
+## 既知の問題
 
-- 使用しているテーマに対応した Hugo
-- Node.js 18+
+* **記事目次の再構築**：記事全体または部分暗号化後に、目次の再レンダリングは行いません。目次はテーマ側で通常どおり生成され、本プラグインはテーマへの個別対応を行いません。
+* **検索インデックスの保護**：`public/index.json` 内の保護対象記事について、`content`、`summary`、`description` フィールドは自動的にクリアされます。ただし、その他の検索インデックスファイルについてはテーマごとの追加対応が必要です。
+* **RSS からの漏洩防止**：`.Summary` によって暗号化対象の内容が feed に出力されないよう、RSS テンプレートの適配方法を用意する必要があります。
 
-## インストール
+# クイックスタート
 
-### GitHub からインストール
+## 環境要件
 
-```bash
-npm install --save-dev github:Aoidayo/hugo-blog-encrypt
-npm install -g github:Aoidayo/hugo-blog-encrypt
-```
+* Hugo のバージョンは、使用しているテーマが要求する Hugo バージョンと一致している必要があります。
+* Node.js 18+
 
-グローバルインストール後にコマンドが見つからない場合は、npm のグローバル bin ディレクトリが `PATH` に入っているか確認してください。
+## 依存関係のインストール
 
-```bash
-npm config get prefix
-ls "$(npm config get prefix)/bin" | grep hugo-blog-encrypt
-```
-
-### ローカルチェックアウトからインストール
+### リモート
 
 ```bash
-git clone git@github.com:Aoidayo/hugo-blog-encrypt.git
+# リモートインストール方式には問題がある可能性があります
+npm install --save-dev github:aoidayo/hugo-blog-encrypt # プロジェクト内にインストール
+npm install -g github:aoidayo/hugo-blog-encrypt # グローバルインストール
+
+# pull 後にローカルで install する方法を推奨
+git pull git@github.com:Aoidayo/hugo-blog-encrypt.git
 cd hugo-blog-encrypt
 npm install -g .
 ```
 
-Hugo プロジェクト内で使う場合:
+### ローカル
+
+`blog-root` 配下で：
 
 ```bash
-npm install --save-dev /path/to/hugo-blog-encrypt
-npm install -g /path/to/hugo-blog-encrypt
+# ローカル依存関係としてインストール
+npm install --save-dev /Users/xxx/code/hugo-blog-encrypt # プロジェクト内にインストール
+'''
+生成されるもの
+node_modules/
+package.json
+package-lock.json
+'''
+
+npm install -g /Users/aoi/code/hugo-blog-encrypt # グローバルインストール
 ```
 
-## Layouts の準備
+## layouts の準備
 
-部分暗号化には shortcode が必要です。記事全体の暗号化では、テーマごとに `.Content` の出力位置が異なるため、テーマの `.Content` 出力部分をラップする必要があります。
+修正が必要な内容：
 
-プロジェクトローカルにインストールする場合は、必要に応じて追加してください。
+* `gitignore` を追加します。npm で依存関係をインストールすると `node_modules` が追加されます（`-g` でグローバルインストールする場合、この手順は不要です）。
+* 部分暗号化には shortcode の追加が必要です。
+* 記事全体の暗号化では、layouts 内で `.Content` を一度ラップする必要があります。プラグインは、テーマごとに異なる `.Content` の出力位置を自動ではフックできません。
+* テーマが `.Summary`、`.Plain`、`.Content` を検索または RSS に出力する場合は、漏洩を防ぐために追加の適配が必要です。
 
-```gitignore
+1. 局所インストールした依存関係を無視するため、`gitignore` に以下を追加します（`npm install -g` でグローバルインストールする場合は不要です）：
+
+```text
 node_modules/
 ```
 
-### 部分暗号化 shortcode
+> [!tip]
+> 手順 2、3：自動設定
+>
+> 手順 2 と 3 は、ルートディレクトリで `hugo-blog-encrypt install` を実行することで完了できます。
+>
+> プロジェクト内にインストールした場合は、`npx hugo-blog-encrypt install` を使用できます。
 
-Hugo プロジェクトに `layouts/shortcodes/encrypt.html` を作成します。
+> [!tip]
+> 手順 2、3：手動で layouts を追加
+>
+> 2. 部分暗号化用の shortcode を追加します。
+>
+> `blog-root/layouts/shortcodes/encrypt.html` を作成し、以下を書き込みます。
+>
+> ```html
+> {{- $password := .Get "password" | default (.Get 0) -}}
+> {{- $prompt := .Get "prompt" | default "パスワードを入力してください" -}}
+> {{- if not $password -}}
+>   {{- errorf "encrypt shortcode in %q requires a password parameter" .Page.File.Path -}}
+> {{- end -}}
+> {{- if (.Page.Params.password | default "") -}}
+> {{ .Page.RenderString .Inner }}
+> {{- else -}}
+> <template data-hugo-encrypt-start>{{ dict "password" $password "prompt" $prompt | jsonify }}</template>
+> {{ .Page.RenderString .Inner }}
+> <template data-hugo-encrypt-end></template>
+> {{- end -}}
+>
+> ```
+>
+> 3. 記事全体暗号化用の partials を追加し、元の `{{.Content}}` をラップします。
+>
+> `blog-root/layouts/partials` に、記事全体暗号化の位置指定用 partials を追加します。
+>
+> ```bash
+> - blog-root
+>     - layouts
+>         - partials
+>             - hugo-blog-encrypt
+>                 - content-start.html
+>                 - content-end.html
+>
+> # content-start.html
+> {{- if (.Params.password | default "") -}}
+> <template data-hugo-encrypt-start>{{ dict "password" .Params.password "prompt" (.Params.prompt | default "パスワードを入力してください") | jsonify }}</template>
+> {{- end -}}
+>
+> # content-end.html
+> {{- if (.Params.password | default "") -}}
+> <template data-hugo-encrypt-end></template>
+> {{- end -}}
+> ```
+
+4. テーマに対応する content テンプレートをコピーし、ルートディレクトリの `layouts` 配下に配置します。
+
+> [!warning]
+> 注意
+>
+> テーマによって `{{.Content}}` の位置は異なります。`Ctrl/Command + Shift + F` でグローバル検索し、該当ファイルをルートディレクトリにコピーして上書きできます。
+
+例えば `stack` テーマでは、`{{.Content}}` は `layout/partials/article/components/content.html` にあります。同じディレクトリ構成でルートディレクトリ側にコピーします。
 
 ```html
-{{- $password := .Get "password" | default (.Get 0) -}}
-{{- $prompt := .Get "prompt" | default "请输入密码" -}}
-{{- if not $password -}}
-  {{- errorf "encrypt shortcode in %q requires a password parameter" .Page.File.Path -}}
-{{- end -}}
-{{- if (.Page.Params.password | default "") -}}
-{{ .Page.RenderString .Inner }}
-{{- else -}}
-<template data-hugo-encrypt-start>{{ dict "password" $password "prompt" $prompt | jsonify }}</template>
-{{ .Page.RenderString .Inner }}
-<template data-hugo-encrypt-end></template>
-{{- end -}}
+<section class="article-content">
+    <!-- Refer to https://discourse.gohugo.io/t/responsive-tables-in-markdown/10639/5 -->
+    {{ $wrappedTable := printf "<div class=\"table-wrapper\">${1}</div>" }}
+    {{ .Content | replaceRE "(<table>(?:.|\n)+?</table>)" $wrappedTable | safeHTML }}
+</section>
 ```
 
-### 記事全体暗号化用 partials
-
-以下を作成します。
-
-```text
-layouts/partials/hugo-blog-encrypt/content-start.html
-layouts/partials/hugo-blog-encrypt/content-end.html
-```
-
-`content-start.html`:
+`content-start` と `content-end` の位置指定タグを追加します。
 
 ```html
-{{- if (.Params.password | default "") -}}
-<template data-hugo-encrypt-start>{{ dict "password" .Params.password "prompt" (.Params.prompt | default "请输入密码") | jsonify }}</template>
-{{- end -}}
+<section class="article-content">
+    <!-- Refer to https://discourse.gohugo.io/t/responsive-tables-in-markdown/10639/5 -->
+    {{ $wrappedTable := printf "<div class=\"table-wrapper\">${1}</div>" }}
+    {{ partial "hugo-blog-encrypt/content-start.html" . }}
+    {{ .Content | replaceRE "(<table>(?:.|\n)+?</table>)" $wrappedTable | safeHTML }}
+    {{ partial "hugo-blog-encrypt/content-end.html" . }}
+</section>
 ```
 
-`content-end.html`:
-
-```html
-{{- if (.Params.password | default "") -}}
-<template data-hugo-encrypt-end></template>
-{{- end -}}
-```
-
-次に、`.Content` を出力しているテーマテンプレートをプロジェクトの `layouts` にコピーし、`.Content` をラップします。
+diff は以下のとおりです。
 
 ```diff
- <section class="article-content">
-+  {{ partial "hugo-blog-encrypt/content-start.html" . }}
-   {{ .Content }}
-+  {{ partial "hugo-blog-encrypt/content-end.html" . }}
- </section>
+<section class="article-content">
+    <!-- Refer to https://discourse.gohugo.io/t/responsive-tables-in-markdown/10639/5 -->
+    {{ $wrappedTable := printf "<div class=\"table-wrapper\">${1}</div>" }}
++   {{ partial "hugo-blog-encrypt/content-start.html" . }}
+    {{ .Content | replaceRE "(<table>(?:.|\n)+?</table>)" $wrappedTable | safeHTML }}
++   {{ partial "hugo-blog-encrypt/content-end.html" . }}
+</section>
 ```
 
-Stack テーマでは通常、`.Content` は `layouts/partials/article/components/content.html` にあります。
+## サンプルドキュメント
 
-## 例
-
-### 記事全体の暗号化
+記事全体の暗号化
 
 ```markdown
 ---
@@ -128,28 +181,32 @@ draft: false
 tags:
   - hugo
   - stack
-password: "123"
-prompt: "パスワードを入力してください"
+password: "123" # 必ず文字列にしてください。数値は使用できません
+prompt: "それがどうした？" # デフォルトは "パスワードを入力してください"
 ---
-
-この本文は Hugo のビルド後に暗号化されます。
+This site is running the Stack theme version compatible with Hugo 0.143.1.
 ```
 
-### 部分暗号化
+部分暗号化
 
 ```markdown
 ---
 title: "部分暗号化"
 date: 2026-06-21T09:00:00+08:00
 draft: false
+tags:
+  - hugo
+  - stack
 ---
 
-ここは公開部分です。
+ここは部分暗号化の例です。👇 以下が暗号化される内容です。
 
-{{< encrypt password="your-password" prompt="パスワードを入力してください" >}}
-ここは暗号化される部分です。
+{{< encrypt password="あなたのパスワード" prompt="ここにはパスワードが必要です" >}}
+ここは暗号化が必要な内容です。
 
-## 見出し
+通常の Markdown に対応しています。
+
+## 小見出し
 
 - リスト
 - 画像
@@ -157,38 +214,37 @@ draft: false
 {{< /encrypt >}}
 ```
 
-## 使い方
+## 使用方法
 
-プロジェクトローカルにインストールした場合:
+### プロジェクト内にインストールした場合
+
+* `hugo-blog-encrypt` を直接呼び出すことはできません。
+* `npx hugo-blog-encrypt preview` で暗号化後のプレビューを行い、`npx hugo-blog-encrypt build` で `public/` のビルドと暗号化を実行できます。
+
+  * `npx hugo-blog-encrypt --help`
+  * `npx hugo-blog-encrypt preview/build`
+* ローカルの `package.json` を編集し、`npm run dev/build/preview` を呼び出すこともできます。
 
 ```bash
-npx hugo-blog-encrypt --help
-npx hugo-blog-encrypt preview
-npx hugo-blog-encrypt build
-```
-
-グローバルインストールした場合:
-
-```bash
-hugo-blog-encrypt preview
-hugo-blog-encrypt preview --port 1314
-hugo-blog-encrypt build
-```
-
-Hugo プロジェクトの `package.json` に script を追加することもできます。
-
-```json
-{
-  "scripts": {
-    "dev": "hugo server",
-    "build": "hugo-blog-encrypt build",
-    "preview": "hugo-blog-encrypt preview"
-  }
+## package.json に追加
+'''
+"scripts": {
+  "dev": "hugo server",
+  "build": "hugo-blog-encrypt build",
+  "preview": "hugo-blog-encrypt preview"
 }
+'''
+
+# 実行
+npm run dev # Hugo を通常起動します。デフォルトの hugo server はホットリロードに対応しています。
+npm run build # Hugo の public を生成し、同時に hugo-blog-encrypt を呼び出して指定タグの暗号化を完了します。
+npm run preview # Hugo の生成、暗号化、プレビューを行います。ホットリロードには対応していないため、ドキュメント変更後はこのコマンドを再実行する必要があります。
 ```
 
-## 注意
+### グローバルインストールした場合
 
-- このプラグインはテーマの目次を変更したり再生成したりしません。目次の挙動はテーマ側に任せます。
-- テーマが `.Summary`、`.Plain`、`.Content` を RSS や検索用ファイルに出力する場合は、漏えいを避けるためにテーマ側の追加対応が必要です。
-- front matter のパスワードは文字列にしてください。例: `password: "123"`。`password: 123` は避けてください。
+* 直接呼び出します。
+
+  * `hugo-blog-encrypt preview`
+  * `hugo-blog-encrypt preview --port 1314`
+  * `hugo-blog-encrypt build`
