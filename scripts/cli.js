@@ -1,6 +1,7 @@
 "use strict";
 
 const { spawnSync } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 const encrypt = require("./encrypt-content");
 const { servePublic } = require("./serve-public");
@@ -14,10 +15,11 @@ function printHelp() {
     "  hugo-blog-encrypt serve [options]",
     "",
     "Commands:",
-    "  encrypt   Encrypt an existing Hugo public directory. Default command.",
-    "  build     Run Hugo, then encrypt public output.",
-    "  preview   Run build, then serve public output locally.",
-    "  serve     Serve public output without rebuilding.",
+    "  encrypt    Encrypt an existing Hugo public directory. Default command.",
+    "  build      Run Hugo, then encrypt public output.",
+    "  preview    Run build, then serve public output locally.",
+    "  serve      Serve public output without rebuilding.",
+    "  install    Copy layouts/ into the Hugo site root.",
     "",
     "Common options:",
     "  --root <dir>       Hugo project root, default: cwd",
@@ -120,6 +122,13 @@ function runEncrypt(options) {
   encrypt.run(encrypt.parseArgs(options.encryptArgs));
 }
 
+function installLayouts(dstRoot) {
+  const src = path.resolve(__dirname, "..", "layouts");
+  const dst = path.resolve(dstRoot, "layouts");
+  fs.cpSync(src, dst, { recursive: true, force: true });
+  console.log(`Copied layouts/ to ${dst}`);
+}
+
 function main() {
   try {
     const options = parseCliArgs(process.argv.slice(2));
@@ -134,6 +143,8 @@ function main() {
       servePublic({ root: options.root, publicDir: options.publicDir, host: options.host, port: options.port });
     } else if (options.command === "serve") {
       servePublic({ root: options.root, publicDir: options.publicDir, host: options.host, port: options.port });
+    } else if (options.command === "install") {
+      installLayouts(options.root);
     } else {
       throw new Error(`Unknown command: ${options.command}`);
     }
